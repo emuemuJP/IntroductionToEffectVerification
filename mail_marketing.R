@@ -1,5 +1,5 @@
 # 必要なパッケージをインストル
-targetPackages <- c('tidyverse') 
+targetPackages <- c('tidyverse')
 newPackages <- targetPackages[!(targetPackages %in% installed.packages()[,"Package"])]
 if(length(newPackages)) install.packages(newPackages)
 for(package in targetPackages) library(package, character.only = T)
@@ -108,3 +108,88 @@ biased_rct_test <- t.test(biased_mens_mail_spend, biased_no_mail_spend, var.equa
 
 # p 値はより小さくなり、統計的に有意な差があることが示すが分析自体が正しいものを示す結果ではない
 biased_rct_test
+
+# biasのあるデータでの回帰分析をおこなう
+# 回帰式は以下
+# Spend_i = Beta_0 + Beta_treatment * treatment_i + Beta_history * history_i
+biased_regression <- lm(data = biased_data, formula = spend ~ treatment + history)
+
+# 分析結果のレポート
+# treatmentの t 検定における p 値は 2.25e-07 と非常に小さな値になっているので
+# 帰無仮説(メール送信の効果はない)を棄却できる.
+# メールを送信することで売り上げが平均 0.9 上昇すると解釈できる
+summary(biased_regression)
+
+# 回帰分析のほとんどは Coefficients 以外の情報を気にしないため、
+# broom ライブラリを使って出力を Coefficients に限定する
+library("broom")
+
+biased_regression_coefficient <- tidy(biased_regression)
+
+biased_regression_coefficient
+
+# RCTデータでの単回帰
+rct_regression <- lm(data = male_df, formula = spend ~ treatment)
+
+# RCTでの Beta_treatment の値は 0.770 程度　一方でバイアスのあるデータでは 0.9 となっており、
+# セレクションバイアスにより効果が過剰に推定されていることがわかる
+rct_regression_coefficient <- summary(rct_regression) %>% tidy()
+
+# 共変量 X をモデルに加え重回帰分析を行う
+nonrct_multiple_regression <- lm(data = biased_data, formula = spend ~ treatment + recency + channel + history)
+nonrct_multiple_regression_coefficient <- tidy(nonrct_multiple_regression)
+
+# Beta_treatment は 0.847 となりRCTデータにおける結果に近づいた
+nonrct_multiple_regression_coefficient
+
+# OVBの確認
+formula_vector <- c(spend ~ treatment + recency + channel, # historyを脱落させたモデル A
+                    spend ~ treatment + recency + channel + history, # もともとのモデル
+                    history ~ treatment + channel + recency # historyに関する相関
+)
+
+# 名前をつける
+names(formula_vector) <- paste("reg", LETTERS[1:3], sep="_")
+names(formula_vector)
+
+# モデル式をそれぞれデータフレーム変換
+models <- formula_vector %>%
+    enframe(name="model_index", value="formula")
+
+# まとめて回帰分析を実施
+df_models <- models %>%
+    # .x で受け取ったデータの各要素に .f に関数を実施
+    mutate(model = map(.x = formula, .f = lm, data = biased_data)) %>%
+    mutate(lm_result = map(.x = model, .f = tidy))
+
+# モデルの結果を整形
+df_results <- df_models %>%
+    mutate(formula = as.character(formula)) %>%
+    # 3つの列を指定
+    select(formula, model_index, lm_result) %>%
+    # 指定した列のデータフレームを展開してdf_resultに保存
+    unnest(cols = c(lm_result))
+
+# 確認したいのは Beta_1 - Alpha_1 と Gamma_1 * Beta_4 の値
+# 各モデルで treatment のパラメータを抜き出す
+treatment_coefficient <- df_results %>%
+    filter(term == "treatment") %>%
+    # カラム名を指定して抜き出し
+    pull(estimate)
+
+# モデル B から history のパラメータを抜き出す
+history_coefficient <- df_results %>%
+    filter(model_index == "reg_B",
+            term == "history") %>%
+    pull(estimate)
+
+# OVB の確認
+# Beta_2 * Gamma_1
+OVB <- history_coefficient * treatment_coefficient[3]
+# Alpha_1 - Beta_1
+coefficient_gap <- treatment_coefficient[1] - treatment_coefficient[2]
+
+# 共変量を追加したモデルとしなかったモデルにおいて推定される効果の差が OVB の式の結果と一致することがわかった
+print(OVB)
+print(":")
+print(coefficient_gap)
