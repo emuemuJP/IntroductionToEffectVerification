@@ -193,3 +193,26 @@ coefficient_gap <- treatment_coefficient[1] - treatment_coefficient[2]
 print(OVB)
 print(":")
 print(coefficient_gap)
+
+# 入れてはいけない変数を入れてみる
+# visit と介入との相関
+correlation_visit_treatment <- lm(
+    data = biased_data,
+    formula = treatment ~ visit + channel + recency + history) %>% tidy()
+
+# 相関 0.144 という有意な結果が得られる
+correlation_visit_treatment
+
+# visitを入れた回帰分析を実施
+bad_control_regression <- lm(
+    data=biased_data,
+    formula = spend ~ treatment + channel + recency + history + visit
+)%>%tidy()
+
+# もともと購買傾向の弱いユーザにメールを配信して来訪を促し購買を促進する
+# メール配信されたグループは
+#   メール配信がされなくともサイトへ来訪するような購買傾向の強いユーザと
+#   メールがあるからサイトへ来訪するような購買傾向の弱いユーザ
+# メールが配信されなかったグループはもともとの購買傾向が強いユーザのみがサイトへ来訪している
+# 介入後にサイトに来訪したユーザ間で比較を行うとメール配信がされなかったグループの方が平均売上が低い
+bad_control_regression
