@@ -66,13 +66,28 @@ using_voucher_result <- df_results %>%
     select(model_index, term, estimate, std.error, p.value) %>%
     arrange(model_index)
 
-# PRSCHA_1 をみると、私立学校で６年生を始める比率が共変量を含まない場合でも6%程度上昇している
+# PRSCHA_1(私立学校で６年生を始める比率) をみると、私立学校で６年生を始める比率が共変量を含まない場合でも6%程度上昇している
 # くじにはずれていてももともと 87% の学生が私立学校でスタートしているのでもともと数が多い
 # 既に入学する確率が高い状態の生徒の間で介入をランダムにアサインしているため変化が少ない
 
-# USNGSCH をみるとどちらのモデルにおいてもおよそ50%の効果が推定されているため、
+# USNGSCH(何かしらの奨学金を調査期間中に使っている割合) をみるとどちらのモデルにおいてもおよそ50%の効果が推定されているため、
 # 当選グループにおいて何かしらの奨学金を調査期間中に使っている割合が、非当選グループに対して 50% 多いことを示している
 # 非当選グループにおける奨学金の利用率は 5% 程度なので当選したことにより多くの生徒が割引研を使い続けていることがわかる
 
 # 割引券には私立学校に"通わせ始める"効果は確認されなかった
 using_voucher_result
+
+# 取り出した効果を ggplot で可視化
+using_voucher_result %>%
+    ggplot(aes(y = estimate, x = model_index)) +
+    geom_point() +
+    geom_errorbar(aes(ymax = estimate + std.error * 1.96,
+                      ymin = estimate - std.error * 1.96,
+                      width = 0.1)) +
+    geom_hline(yintercept = 0, linetype = 2) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(hjust = 0.5),
+          legend.position = "bottom",
+          plot.margin = margin(0.5, 1, 0.5, 1, "cm"))
+
+# 留年の傾向を可視化
