@@ -90,4 +90,68 @@ using_voucher_result %>%
           legend.position = "bottom",
           plot.margin = margin(0.5, 1, 0.5, 1, "cm"))
 
-# 留年の傾向を可視化
+
+# 私学や学校に行く傾向を可視化
+going_private_results <- df_results %>%
+    filter(term == "VOUCH0", str_detect(model_index, "PRSCH_C|INSCHL")) %>%
+    select(model_index, term, estimate, std.error, p.value) %>%
+    arrange(model_index)
+
+# PRSCH_C を見ると効果量は 0.15 程度という結果になっており、
+# 当選したことによって私立学校へ通い続ける生徒が 15 %程度増えていることがわかる
+
+# INSCHL を見ると信頼区間 0 を含む状態になっているので、当選することによって
+# 何かしらの学校への通学を増加するような効果は明確ではない。
+# また推定結果は 0.01 程度となっているため、効果は非常に小さいものである。
+
+# 当選したことによって学校に通えるような学生が増えることはなかったが、
+# 当選したことによって私立の学校に通い続けられる学生は増えた
+going_private_results
+
+# 取り出した効果を ggplot で可視化
+going_private_results %>%
+    ggplot(aes(y = estimate, x = model_index)) +
+    geom_point() +
+    geom_errorbar(aes(ymax = estimate + std.error * 1.96,
+                      ymin = estimate - std.error * 1.96,
+                      width = 0.1)) +
+    geom_hline(yintercept = 0, linetype = 2) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(hjust = 0.5),
+          legend.position = "bottom",
+          plot.margin = margin(0.5, 1, 0.5, 1, "cm"))
+
+# 留学の傾向を可視化
+recept_results <- df_results %>%
+    filter(term == "VOUCH0", str_detect(model_index, "FINISH|REPT")) %>%
+    select(model_index, term, estimate, std.error, p.value) %>%
+    arrange(model_index)
+
+
+# 割引券のしくみへ私立学校に通い続けることは、当選グループで留年する傾向も低くなる
+# 6年生で留年したかを示す REPT6 に対する推定効果は -0.06 程度であり、
+# 6年生における留年する確率が 6 %程度低いことを示している
+# NREPT, REPT のどちらも有意な結果
+# NREPT : 3年間で何回留年したか
+# REPT : 調査までに一度でも留年したか
+# 6,7,8年生の修了を表すFINISH6-8はどれも有意な結果となっている。
+# 8年生での卒業は一度でも留年すれば不可能になるため差が大きくなっている
+recept_results
+
+# 取り出した効果を ggplot で可視化
+recept_results %>%
+    ggplot(aes(y = estimate, x = model_index)) +
+    geom_point() +
+    geom_errorbar(aes(ymax = estimate + std.error * 1.96,
+                      ymin = estimate - std.error * 1.96,
+                      width = 0.1)) +
+    geom_hline(yintercept = 0, linetype = 2) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(hjust = 0.5),
+          legend.position = "bottom",
+          plot.margin = margin(0.5, 1, 0.5, 1, "cm"))
+
+# これらの結果から割引券には私立学校への通学を維持すること、留年しないようにすること
+# 割引券を受け取った生徒がより学費が高く教育の質が高い学校にいった為に
+# 留年しなくなったというように見ることもできる
+# これらの原因を特定するために、覚醒とと学校選択についてのデータが必要だがデータセットにないため切り分けできない
