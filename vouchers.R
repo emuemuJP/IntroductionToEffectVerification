@@ -155,3 +155,154 @@ recept_results %>%
 # 割引券を受け取った生徒がより学費が高く教育の質が高い学校にいった為に
 # 留年しなくなったというように見ることもできる
 # これらの原因を特定するために、覚醒とと学校選択についてのデータが必要だがデータセットにないため切り分けできない
+
+# 性別による効果差の分析
+# Angrist(2002)のTable.4 & 6 bogota 1995の再現
+
+# table 4に必要なデータの抜き出し
+data_tablel4_bogata1995 <- vouchers %>%
+  filter(BOG95SMP == 1, TAB3SMPL == 1,
+         !is.na(SCYFNSH), !is.na(FINISH6), !is.na(PRSCHA_1),
+         !is.na(REPT6), !is.na(NREPT), !is.na(INSCHL),
+         !is.na(FINISH7),
+         !is.na(PRSCH_C), !is.na(FINISH8), !is.na(PRSCHA_2),
+         !is.na(TOTSCYRS), !is.na(REPT)
+  ) %>%
+  select(VOUCH0, SVY, HSVISIT, DJAMUNDI, PHONE, AGE,
+         STRATA1:STRATA6, STRATAMS, DBOGOTA, D1993, D1995, D1997,
+         DMONTH1:DMONTH12, SEX_MISS, FINISH6, FINISH7, FINISH8,
+         REPT6, REPT, NREPT, SEX2, TOTSCYRS, MARRIED, HASCHILD,
+         HOURSUM,WORKING3, INSCHL,PRSCH_C,USNGSCH,PRSCHA_1)
+
+# 女子生徒のデータだけ取り出し
+female_regression_data <- data_tablel4_bogata1995 %>%
+    filter(SEX2 == 0)
+
+### まとめて回帰分析を実行
+df_models <- models %>%
+  mutate(model = map(.x = formula, .f = lm, data = female_regression_data)) %>%
+  mutate(lm_result = map(.x = model, .f = tidy))
+
+### モデルの結果を整形
+df_results_female <- df_models %>%
+  mutate(formula = as.character(formula),
+         gender = "female") %>%
+  select(formula, model_index, lm_result, gender) %>%
+  unnest(cols = c(lm_result))
+
+# 男子生徒のデータだけ取り出し
+male_regression_data <- data_tablel4_bogata1995 %>%
+    filter(SEX2 == 1)
+
+### まとめて回帰分析を実行
+df_models <- models %>%
+  mutate(model = map(.x = formula, .f = lm, data = male_regression_data)) %>%
+  mutate(lm_result = map(.x = model, .f = tidy))
+
+### モデルの結果を整形
+df_results_male <- df_models %>%
+  mutate(formula = as.character(formula),
+         gender = "male") %>%
+  select(formula, model_index, lm_result, gender) %>%
+  unnest(cols = c(lm_result))
+
+## 通学傾向への分析結果の可視化
+### PRSCHA_1,USNGSCHに対する分析結果を抜き出す
+using_voucher_results_gender <- rbind(df_results_male, df_results_female) %>%
+  filter(term == "VOUCH0", str_detect(model_index, "PRSCHA_1|USNGSCH")) %>%
+  select(gender, model_index, term, estimate, std.error, p.value) %>%
+  arrange(gender, model_index) %>%
+  filter(str_detect(model_index, "covariate"))
+
+### ggplotによる可視化
+# PRSCHA_1：私立学校で６年生を始める比率
+# 　男子学生だと 9% の効果があったが女子生徒は 2% 程度であった
+# 　2%程度だと統計的に有意な差とは言えないため私立学校へ通わせる効果はない
+# 　という可能性を否定できない
+# 　統計的に有意だったとしても効果量は男子生徒の 1/4 以下なため、
+# 　私立通学を増加させる効果が非常に小さく性別によって効果が大きく異なっている
+# 　統計的に有意な差って何? → 箱ひげが 0 を含むかどうか
+# USNGSCH：何かしらの奨学金を調査期間中に使っている割合
+# 　男子生徒では 44% 程度、女子生徒では 55% 程度となっており
+#   女子生徒の方が当選時に奨学金を利用する傾向が強い
+using_voucher_results_gender %>%
+  filter(str_detect(model_index, "covariate")) %>%
+  ggplot(aes(y = estimate, x = model_index)) +
+  geom_point() +
+  geom_errorbar(aes(ymax = estimate + std.error*1.96,
+                    ymin = estimate - std.error*1.96,
+                    width = 0.1)) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(hjust = 0.5),
+        legend.position = "bottom",
+        plot.margin = margin(0.5,1,0.5,1, "cm")) +
+  facet_grid(gender ~ .)
+
+## 留年と通学年数への分析結果の可視化
+### PRSCH_C,INSCHL,REPT,TOTSCYRS,FINISHに対する分析結果を抜き出す
+going_private_results_gender <- rbind(df_results_male, df_results_female) %>%
+  filter(term == "VOUCH0",
+         str_detect(model_index, "PRSCH_C|INSCHL|REPT|TOTSCYRS|FINISH")) %>%
+  select(gender, model_index, term, estimate, std.error, p.value) %>%
+  arrange(model_index)
+
+### ggplotによる可視化
+# PRSCH_C：当選したことによって私立学校へ通い続ける生徒
+#  男子生徒が 14% 女子生徒が17% で私立学校に通学させる効果は
+#  女子生徒のほうが効果が高い
+# INSCHL：当選することによって公立学校への通学を増加
+#  男女両方有意な差はない
+# REPT6：6年生で留年したかを示す
+#  男子生徒で 8 % 女子学生で 3% 程度の現象となっているが統計的に有意な結果にはなっていない
+# NREPT : 3年間で何回留年したか
+# REPT : 調査までに一度でも留年したか
+# FINISH6-8：6,7,8年生の修了を表す
+#  男子、女子ともに FINISH8 で 10% 増加しており、より高い学年を修了できるようになっている
+#
+# 総合すると女子生徒は通学を維持する効果は高いが留年に対する効果はほぼない
+# 女子生徒が私立学校に通い続けられない原因が学力や留年以外の要因に起因している
+# ことを示唆する。経済リソースが分配されにくく公立への転校や労働により家計を助ける
+# ことを求められている可能性
+# 割引券により労働時間の減少が予想される
+going_private_results_gender %>%
+  filter(str_detect(model_index, "covariate")) %>%
+  ggplot(aes(y = estimate, x = model_index)) +
+  geom_point() +
+  geom_errorbar(aes(ymax = estimate + std.error*1.96,
+                    ymin = estimate - std.error*1.96,
+                    width = 0.1)) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(hjust = 0.5),
+        legend.position = "bottom",
+        plot.margin = margin(0.5,1,0.5,1, "cm")) +
+  facet_grid(gender ~ .)
+
+
+### HOURに対する分析結果を抜き出す
+working_hour_results_gender <- rbind(df_results_male, df_results_female) %>%
+  filter(term == "VOUCH0", str_detect(model_index, "HOUR")) %>%
+  select(gender, model_index, term, estimate, std.error, p.value) %>%
+  arrange(gender, model_index)
+
+### ggplotによる可視化
+# HOURSUM：労働時間
+# 男子生徒では 0.6 時間の減少ですが有意差はない
+# 一方女子生徒は 2.1 時間の減少でかつ統計的に有意な結果となっている。
+#
+# 割引券により労働が抑えられている、もしくは私学の勉強量の増加により労働できない
+working_hour_results_gender %>%
+  filter(str_detect(model_index, "covariate")) %>%
+  ggplot(aes(y = estimate, x = model_index)) +
+  geom_point() +
+  geom_errorbar(aes(ymax = estimate + std.error*1.96,
+                    ymin = estimate - std.error*1.96,
+                    width = 0.1)) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(hjust = 0.5),
+        legend.position = "bottom",
+        plot.margin = margin(0.5,1,0.5,1, "cm")) +
+  facet_grid(. ~ gender)
+
