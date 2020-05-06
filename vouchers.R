@@ -1,5 +1,5 @@
 
-# 必要なパッケージをインストル
+# 必要なパッケージをインストール
 targetPackages <- c('remotes', 'tidyverse')
 newPackages <- targetPackages[!(targetPackages %in% installed.packages()[,"Package"])]
 if(length(newPackages)) install.packages(newPackages)

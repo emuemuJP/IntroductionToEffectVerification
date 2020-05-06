@@ -1,6 +1,7 @@
 options(repos="https://ftp.yz.yamagata-u.ac.jp/pub/cran/")
 if (!require('devtools')) install.packages('devtools')
 devtools::install_github("bquast/rddtools")
+install.packages("rdd")
 
 # (1) ライブラリの読み出し
 library("tidyverse")
@@ -118,3 +119,55 @@ nonlinear_rdd_ord4 <- rdd_reg_lm(rdd_object=nonlinear_rdd_data, order=4)
 nonlinear_rdd_ord4
 
 plot(nonlinear_rdd_ord4)
+
+# (7) 分析に使うデータの幅と分析結果のプロット
+bound_list <- 2:100/100
+result_data <- data.frame()
+for(bound in bound_list){
+  out_data <- rdd_data %>%
+    filter(between(history_log, 5.5 - bound, 5.5 + bound)) %>%
+    group_by(treatment) %>%
+    summarise(count = n(),
+              visit_rate = mean(visit),
+              sd = sd(visit))
+
+  late <- out_data$visit_rate[2] - out_data$visit_rate[1]
+  N <- sum(out_data$count)
+  se <- sqrt(sum(out_data$visit_rate^2))/sqrt(N)
+  result_data <- rbind(result_data, data.frame(late, bound, N, se))
+}
+
+# 利用するデータ量を適度に絞らないといけない
+# 多すぎても少なすぎてもダメ
+result_data %>%
+  ggplot(aes(y = late,
+             x = bound)) +
+  geom_ribbon(aes(ymax = late + 1.96*se,
+                  ymin = late - 1.96*se), fill = "grey70") +
+  geom_line() +
+  theme_bw()
+
+# (8) nonparametric RDD
+## ライブラリの読み込み
+library("rdd")
+
+## non-parametric RDDの実行
+rdd_result <- RDestimate(data = rdd_data,
+                         formula = visit ~ history_log,
+                         cutpoint = 5.5)
+
+## 結果のレポート
+# LATE と Half-BW の推定値が大まかに同一といっているが、何をもって同一としているのか
+summary(rdd_result)
+
+## 結果のプロット
+# 上下の点線は信頼区間を表している
+# カットオフ前後で上にシフトしている
+plot(rdd_result)
+
+## manipulat
+# 0.63 というp値が得られているためユーザが自分の意思で介入グループに入る状況は
+# 起きていないことが確認できる
+DCdensity(runvar = rdd_data %>% pull(history_log),
+          cutpoint = 5.5,
+          plot = FALSE)

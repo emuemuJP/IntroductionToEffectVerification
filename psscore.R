@@ -76,3 +76,95 @@ IPW_result <- lm(data = biased_data,
   tidy()
 
 IPW_result
+
+# (9) 共変量のバランスを確認
+##ライブラリの読み込み
+library("cobalt")
+
+#TODO: 絶対値で表示されない
+## マッチングしたデータでの共変量のバランス
+love.plot(m_near,
+          threshold = .1)
+
+## 重み付きデータでの共変量のバランス
+love.plot(weighting,
+          threshold = .1)
+
+# (10) 統計モデルを用いたメールの配信のログを分析
+## 学習データと配信ログを作るデータに分割
+set.seed(1)
+
+train_flag <- sample(NROW(male_df), NROW(male_df)/2, replace = FALSE)
+
+male_df_train <- male_df[train_flag,] %>%
+  filter(treatment == 0)
+
+male_df_test <- male_df[-train_flag,]
+
+## 売上が発生する確率を予測するモデルを作成
+predict_model <- glm(data = male_df_train,
+                     formula = conversion ~ recency + history_segment +
+                       channel + zip_code,
+                     family = binomial)
+
+## 売上の発生確率からメールの配信確率を決める
+pred_cv <- predict(predict_model,
+                   newdata = male_df_test,
+                   type = "response")
+pred_cv_rank <- percent_rank(pred_cv)
+
+## 配信確率を元にメールの配信を決める
+mail_assign <- sapply(pred_cv_rank, rbinom, n = 1, size = 1)
+
+## 配信ログを作成
+ml_male_df <- male_df_test %>%
+  mutate(mail_assign = mail_assign,
+         ps = pred_cv_rank) %>%
+  filter( (treatment == 1 & mail_assign == 1) |
+            (treatment == 0 & mail_assign == 0) )
+
+## 実験をしていた場合の平均の差を確認
+rct_male_lm <- lm(data = male_df_test, formula = spend ~ treatment) %>%
+  tidy()
+
+rct_male_lm
+
+## 平均の比較
+ml_male_lm <- lm(data = ml_male_df, formula = spend ~ treatment) %>%
+  tidy()
+
+ml_male_lm
+
+## 傾向スコアマッチングの推定(TPS)
+library(Matching)
+PSM_result <- Match(Y = ml_male_df$spend,
+                    Tr = ml_male_df$treatment,
+                    X = ml_male_df$ps,
+                    estimand = "ATT")
+
+## 推定結果の表示
+summary(PSM_result)
+
+## 推定結果の表示
+summary(PSM_result)
+
+## IPWの推定
+W.out <- weightit(treatment ~ recency + history_segment +
+                    channel + zip_code,
+                  data = ml_male_df,
+                  ps = ml_male_df$ps,
+                  method = "ps",
+                  estimand = "ATE")
+
+## 重み付けしたデータでの共変量のバランスを確認
+love.plot(W.out,
+          threshold = .1)
+
+## 重みづけしたデータでの効果の分析
+IPW_result <- ml_male_df %>%
+  lm(data = .,
+     spend ~ treatment,
+     weights = W.out$weights) %>%
+  tidy()
+
+IPW_result
